@@ -1,56 +1,83 @@
-ideas-ad@ideasad-desktop:~/super_ws$ colcon build --symlink-install
-Starting >>> mars_quadrotor_msgs
-Starting >>> marsim_render
-Starting >>> rog_map
-Starting >>> mission_planner
-[Processing: mars_quadrotor_msgs, marsim_render, mission_planner, rog_map]     
-Finished <<< mars_quadrotor_msgs [36.3s]                                    
-[Processing: marsim_render, mission_planner, rog_map]                       
-[Processing: marsim_render, mission_planner, rog_map]
---- stderr: marsim_render                                                      
-CMake Warning (dev) at /usr/share/cmake-3.22/Modules/FindOpenGL.cmake:315 (message):
-  Policy CMP0072 is not set: FindOpenGL prefers GLVND by default when
-  available.  Run "cmake --help-policy CMP0072" for policy details.  Use the
-  cmake_policy command to set the policy and suppress this warning.
+THE FIX (5 minutes)
+Step 1: Install Missing ROS2 Packages
+bash# SSH to Jetson (if you're not already there)
+ssh aabhang@jetson_ip
 
-  FindOpenGL found both a legacy GL library:
+# Install MAVROS and dependencies
+sudo apt update
+sudo apt install -y ros-humble-mavros ros-humble-mavros-msgs
 
-    OPENGL_gl_LIBRARY: /usr/lib/aarch64-linux-gnu/libGL.so
+# Install other SUPER dependencies
+sudo apt install -y \
+  ros-humble-pcl-conversions \
+  ros-humble-pcl-ros \
+  ros-humble-tf2-eigen \
+  ros-humble-nav-msgs \
+  ros-humble-sensor-msgs \
+  ros-humble-std-msgs \
+  ros-humble-rviz2
 
-  and GLVND libraries for OpenGL and GLX:
+# Verify mavros_msgs installed
+ros2 pkg list | grep mavros
+Expected output: Should show mavros and mavros_msgs in the list
+Step 2: Source ROS2 in Current Shell
+bash# Make sure current shell has ROS2 environment
+source /opt/ros/humble/setup.bash
 
-    OPENGL_opengl_LIBRARY: /usr/lib/aarch64-linux-gnu/libOpenGL.so
-    OPENGL_glx_LIBRARY: /usr/lib/aarch64-linux-gnu/libGLX.so
+# Verify you can find mavros_msgs
+ros2 pkg prefix mavros_msgs
+# Should output path like: /opt/ros/humble/share/mavros_msgs
+Step 3: Clean and Rebuild SUPER
+bashcd ~/super_ws
 
-  OpenGL_GL_PREFERENCE has not been set to "GLVND" or "LEGACY", so for
-  compatibility with CMake 3.10 and below the legacy GL library will be used.
-Call Stack (most recent call first):
-  CMakeLists.txt:48 (find_package)
-This warning is for project developers.  Use -Wno-dev to suppress it.
+# Remove old build artifacts
+rm -rf build install log
 
-** WARNING ** io features related to pcap will be disabled
-cc1: warning: command-line option ‘-Wnon-virtual-dtor’ is valid for C++/ObjC++ but not for C
-cc1: warning: command-line option ‘-Woverloaded-virtual’ is valid for C++/ObjC++ but not for C
----
-Finished <<< marsim_render [2min 4s]
-Starting >>> perfect_drone_sim
---- stderr: perfect_drone_sim                                               
-** WARNING ** io features related to pcap will be disabled
-In file included from /home/ideas-ad/super_ws/src/SUPER/mars_uav_sim/perfect_drone_sim/src/ros2_perfect_drone_node.cpp:1:
-/home/ideas-ad/super_ws/src/SUPER/mars_uav_sim/perfect_drone_sim/include/perfect_drone_sim/ros2_perfect_drone_model.hpp:14:10: fatal error: pcl_conversions/pcl_conversions.h: No such file or directory
-   14 | #include "pcl_conversions/pcl_conversions.h"
-      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-compilation terminated.
-gmake[2]: *** [CMakeFiles/perfect_drone_node.dir/build.make:76: CMakeFiles/perfect_drone_node.dir/src/ros2_perfect_drone_node.cpp.o] Error 1
-gmake[1]: *** [CMakeFiles/Makefile2:137: CMakeFiles/perfect_drone_node.dir/all] Error 2
-gmake: *** [Makefile:146: all] Error 2
----
-Failed   <<< perfect_drone_sim [13.8s, exited with code 2]
-Aborted  <<< mission_planner [2min 59s]               
-Aborted  <<< rog_map [3min 5s]                                         
+# Rebuild SUPER with clean state
+colcon build --symlink-install
 
-Summary: 2 packages finished [3min 6s]
-  1 package failed: perfect_drone_sim
-  2 packages aborted: mission_planner rog_map
-  4 packages had stderr output: marsim_render mission_planner perfect_drone_sim rog_map
-  1 package not processed
+
+IF BUILD STILL FAILS: Use rosdep (Nuclear Option)
+If the above doesn't work, use rosdep to automatically install all missing dependencies:
+bashcd ~/super_ws
+
+# Check what rosdep finds
+rosdep check --from-paths src/SUPER --rosdistro humble --ignore-src
+
+# Install everything rosdep finds as missing
+rosdep install -y --from-paths src/SUPER --rosdistro humble --ignore-src
+
+# Clean and rebuild
+rm -rf build install log
+colcon build --symlink-install
+
+VERIFY BUILD SUCCESS
+After build completes:
+bash# Check all packages built
+ls -la ~/super_ws/install/
+
+# Should show:
+# - mars_quadrotor_msgs/
+# - rog_map/
+# - mission_planner/
+# - marsim_render/
+# - fast_lio/
+# etc.
+
+# Source the new build
+source ~/super_ws/install/setup.bash
+
+# List all SUPER packages
+ros2 pkg list | grep -E "mars_|mission_|rog_"
+
+# Test SUPER in simulation (no sensors needed)
+ros2 launch mission_planner benchmark_dense.launch.py
+
+# You should see RViz open with:
+# - Dense forest environment
+# - Planning trajectories
+# - Obstacle map
+
+
+# This will take 10-15 minutes on Jetson Orin Nano
+# Watch for: "Finished <<< mission_planner"
